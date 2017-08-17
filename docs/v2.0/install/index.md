@@ -22,6 +22,7 @@ This is the installation documentation for installing the **FileSender 2.0-alpha
 
 * RedHat/CentOS (7)
 * Debian (8, Jessie)
+* Ubuntu (16.04, Xenial)
 
 ### Dependencies
 
@@ -42,6 +43,10 @@ On Debian, run:
 
 	apt-get install -y apache2 php5 libapache2-mod-php5
 
+On Ubuntu, run:
+
+	apt-get install -y apache2 php libapache2-mod-php php-mbstring php-xml php-mcrypt
+
 # Step 2 - Install the FileSender package
 
 Install the Git package on RedHat/CentOS:
@@ -54,16 +59,18 @@ Or install the Git package on Debian:
 
 Install the FileSender 2.0-alpha branch from the GIT repository:
 
+	mkdir /opt/filesender
 	cd /opt/filesender/
 	git clone https://github.com/filesender/filesender.git filesender-2.0
-	ln -s filesender-2.0/ filesender
+	ln -s filesender-2.0 filesender
 
-Initialise config file and set permissions right. Make the files, tmp and log directories writable by the web daemon user (`apache` on RedHat/CentOS, `www-data` on Debian), copy the config file in place from the template and allow the web daemon user to read the config.php configuration file:
+Initialise config file and set permissions right. Make the files, tmp and log directories writable by the web daemon user (`apache` on RedHat/CentOS, `www-data` on Debian and Ubuntu), copy the config file in place from the template and allow the web daemon user to read the config.php configuration file:
 
-On RedHat/CentOS/Debian, run:
+On RedHat/CentOS/Debian/Ubuntu, run:
 
 	cd /opt/filesender/filesender
 	cp config/config_sample.php config/config.php
+	mkdir tmp files log
 	chmod o-rwx tmp files log config/config.php
 
 On RedHat/CentOS, run:
@@ -75,7 +82,7 @@ On RedHat/CentOS, run:
 	setsebool -P httpd_can_sendmail on
 	restorecon -R /opt/filesender
 
-On Debian, run:
+On Debian/Ubuntu, run:
 
 	chown www-data:www-data tmp files log
 	chgrp www-data config/config.php
@@ -89,21 +96,21 @@ On Debian, run:
 SimpleSAMLphp helps you use nearly any authentication mechanism you can imagine. Following these instructions will set you up with a SimpleSAMLphp installation that uses Feide RnD's OpenIdP to authenticate users. When you move to a production service you probably want to change that to only support authentication sources of your choice.
 
 [Download SimpleSamlPhp](https://simplesamlphp.org/download).
-Other [(later or older) versions](https://simplesamlphp.org/archive) will probably work. For the FileSender 2.0 release we tested with version 1.14.13.
+Other [(later or older) versions](https://simplesamlphp.org/archive) will probably work. For the FileSender 2.0 release we tested with version 1.14.15.
 
-	cd /root
-	mkdir filesender
-	cd filesender
-	wget https://simplesamlphp.org/res/downloads/simplesamlphp-1.14.13.tar.gz
+	cd ~
+	wget https://github.com/simplesamlphp/simplesamlphp/releases/download/v1.14.15/simplesamlphp-1.14.15.tar.gz
 
-* **NOTE**: you will of course remember to check [the sha256 hash of the tar file](https://simplesamlphp.org/archive), right?
+Verify the SHA256 Hash at https://simplesamlphp.org/archive
+
+	sha256sum simplesamlphp-1.14.15.tar.gz
+
 
 Extract it in a suitable directory and create symlink:
 
-	mkdir /opt/filesender/
 	cd /opt/filesender
-	tar xvzf /root/filesender/simplesamlphp-1.14.13.tar.gz
-	ln -s simplesamlphp-1.14.13/ simplesaml
+	tar xvzf ~/simplesamlphp-1.14.15.tar.gz
+	ln -s simplesamlphp-1.14.15/ simplesaml
 
 * **SECURITY NOTE**: we only want *the user interface files* to be directly accessible for the world through the web server, not any of the other files. We will not extract the SimpleSAMLphp package in the `/var/www` directory (the standard Apache document root) but rather in a specific `/opt` tree. We'll point to the SimpleSAML web root with a web server alias.
 
@@ -113,7 +120,7 @@ Copy standard configuration files to the right places:
 	cp -r config-templates/*.php config/
 	cp -r metadata-templates/*.php metadata/
 
-To tailor your [SimpleSAMLphp](http://simplesamlphp.org/) installation to match your local site's needs please check its [installation and configuration documentation](http://simplesamlphp.org/docs). When connecting to an Identity provider make sure all the required attributes are sent by the identity provider. See the section on [IdP attributes](../admin/reference/#idp_attributes) in the Reference Manual for details.
+To tailor your [SimpleSAMLphp](https://simplesamlphp.org/) installation to match your local site's needs please check its [installation and configuration documentation](https://simplesamlphp.org/docs). When connecting to an Identity provider make sure all the required attributes are sent by the identity provider. See the section on [IdP attributes](../admin/reference/#idp_attributes) in the Reference Manual for details.
 
 * **NOTE**: It's outside the scope of this document to explain how to configure an authentication backend. The software has built-in support for [SAML](https://simplesamlphp.org/docs/stable/ldap:ldap), [LDAP](https://simplesamlphp.org/docs/stable/ldap:ldap), [Radius](https://simplesamlphp.org/docs/stable/radius:radius) and [many more](https://simplesamlphp.org/docs/stable/simplesamlphp-idp#section_2).
 
@@ -122,7 +129,7 @@ To tailor your [SimpleSAMLphp](http://simplesamlphp.org/) installation to match 
 Create a configuration file for FileSender. This file is located in one of these locations:
 
 * **/etc/httpd/conf.d/filesender.conf** (RedHat/CentOS)
-* **/etc/apache2/sites-available/filesender.conf** (Debian)
+* **/etc/apache2/sites-available/filesender.conf** (Debian/Ubuntu)
 
 The contents of the file must be as follows:
 
@@ -140,14 +147,15 @@ The contents of the file must be as follows:
 		Require all granted
 	</Directory>
 
-On Debian you must enable your configuration, run:
+On Debian/Ubuntu you must enable your configuration, run:
 
 	a2enmod alias headers ssl
 	a2ensite default-ssl filesender
+	service apache2 reload
 
 # Step 5 - Install and configure database
 
-## Option a - PostgreSQL
+## Option A - PostgreSQL
 
 On RedHat/CentOS, run:
 
@@ -157,13 +165,19 @@ On Debian, run:
 
 	apt-get install -y postgresql php5-pgsql
 
+On Ubuntu, run:
+
+	apt install -y postgresql php-pgsql
+
 FileSender uses password based database logins and by default assumes that PostgreSQL is configured to accept password based sessions on 'localhost'. You should check and when needed change the relevant settings in the PostgreSQL pg_hba.conf configuration file. This file should have the following entries with **md5** listed as METHOD for local IPv4 and IPv6 connections:
 
 	# Database administrative login by UNIX sockets local all postgres peer
 	# TYPE DATABASE USER CIDR-ADDRESS METHOD
 	# "local" is for Unix domain socket connections only local all all peer
-	# IPv4 local connections: host all all 127.0.0.1/32 md5
-	# IPv6 local connections: host all all ::1/128 md5
+	# IPv4 local connections: 
+	host all all 127.0.0.1/32 md5
+	# IPv6 local connections: 
+	host all all ::1/128 md5
 
 On Debian based systems this file will be in `/etc/postgresql/<version>/main/pg_hba.conf`. On Red Hat/Fedora based systems this file will be in `/var/lib/pgsql/data/pg_hba.conf`. When changing the pg_hba.conf file you'll have to restart the database server with (version number may be different or not needed depending on your system):
 
@@ -171,17 +185,21 @@ On Debian based systems this file will be in `/etc/postgresql/<version>/main/pg_
 
 Now create the database user `filesender` without special privileges and with a password. The command will prompt you to specify and confirm a password for the new database user. *This is the password you need to configure in the FileSender configuration file later on*.
 
-	$ postgres createuser -S -D -R -P filesender
+	su postgres 
+	createuser -S -D -R -P filesender
 	Enter password for new role: <secret>
 	Enter it again: <secret>
+	exit
 
 This will create a database user **filesender** without special privileges, and with a password. This password you will have to configure in the filesender config.php later on.
 
 Create the filesender database with UTF8 encoding owned by the newly created filesender user:
 
-	postgres createdb -E UTF8 -O filesender filesender
+	su postgres 
+	createdb -E UTF8 -O filesender filesender
+	exit
 
-## Option b - MySQL
+## Option B - MySQL
 
 On RedHat/CentOS, run:
 
@@ -206,13 +224,13 @@ Create the filesender database:
 
 ## Automatic
 
-A sample settings file is provided with FileSender in **config-templates/filesender-php.ini**. If you don't feel like manually editing your php.ini file, copy the filesender-php.ini file to your **/etc/php.d/** (RedHat/CentOS) or **/etc/php5/apache2/conf.d/** (Debian) directory to activate those settings.
+A sample settings file is provided with FileSender in **config-templates/filesender-php.ini**. If you don't feel like manually editing your php.ini file, copy the filesender-php.ini file to your **/etc/php.d/** (RedHat/CentOS), **/etc/php5/apache2/conf.d/** (Debian) or **/etc/php/apache2/conf.d/** (Ubuntu) directory to activate those settings.
 
 On **RedHat/CentOS**, run:
 
 	service httpd reload
 
-On **Debian**, run:
+On **Debian/Ubuntu**, run:
 
 	service apache2 reload
 
@@ -247,19 +265,20 @@ On **RedHat/CentOS**, run:
 
 	service httpd reload
 
-On **Debian**, run:
+On **Debian/Ubuntu**, run:
 
 	service apache2 reload
 
 # Step 7 - Configure your FileSender installation
 
-Copy the configuration template and edit it to match your site settings.
+Edit the configuration template to match your site settings.
 
 	cd /opt/filesender/filesender/config
-	cp config{_sample,}.php
 	$EDITOR config.php
 
-Be sure to at least set `$config['site_url']`, contact details, database settings and authentication configuration. The configuration file is self-explanatory.
+Be sure to at least set `$config['site_url']`, contact details, database settings and authentication configuration. 
+
+The configuration file is self-explanatory.
 
 # Step 8 - Initialise the FileSender database
 
@@ -301,7 +320,7 @@ Visit the URL to your FileSender instance.
 
 	https://<your site>/filesender/
 
-* **NOTE**: If you want your site to be available on `https://<your site>/`, without the /filesender, set `DocumentRoot /opt/filesender/filesender/www` in Apache and remember to update your `$config['site_url']` accordingly.
+* **NOTE**: If you want your site to be available on `https://<your site>/`, without the /filesender, replace `Alias /filesender /opt/filesender/filesender/www` with ``Alias / /opt/filesender/filesender/www/` in Apache and remember to update your `$config['site_url']` accordingly.
 
 # Perfection
 
@@ -343,7 +362,7 @@ MAY be on, if you do not run the database on the local host.
 Its good practice to disallow plain HTTP traffic and allow HTTPS only. Make a file in one of the following locations:
 
 * **/etc/httpd/conf.d/000-forcehttps.conf** (RedHat/CentOS)
-* **/etc/apache2/sites-available/000-forcehttps.conf** (Debian)
+* **/etc/apache2/sites-available/000-forcehttps.conf** (Debian/Ubuntu)
 
 Add the following:
 
@@ -355,7 +374,7 @@ On **RedHat/CentOS**, run:
 
 	service httpd reload
 
-On **Debian**, run:
+On **Debian/Ubuntu**, run:
 
 	a2ensite 000-forcehttps
 	a2dissite 000-default
