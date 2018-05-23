@@ -1,5 +1,10 @@
 <?php
 
+$formClasses = "upload_form_regular";
+if (Config::get('upload_display_per_file_stats')) {
+   $formClasses = "upload_form_stats";
+}
+
 if(Auth::isGuest()) {
     $guest = AuthGuest::getGuest();
     
@@ -30,7 +35,7 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
 ?>
 
 <div class="box">
-    <form id="upload_form" enctype="multipart/form-data" accept-charset="utf-8" method="post" data-need-recipients="<?php echo $need_recipients ? '1' : '' ?>">
+    <form id="upload_form" class="<?php echo $formClasses; ?>" enctype="multipart/form-data" accept-charset="utf-8" method="post" data-need-recipients="<?php echo $need_recipients ? '1' : '' ?>">
         <div class="box">
             <div class="files"></div>
             
@@ -89,7 +94,7 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
                     
                     <?php if($allow_recipients) { ?>
                     <div class="fieldcontainer" data-related-to="message">
-                        <label id="to" for="to" class="mandatory">{tr:to} :</label>
+                        <label for="to" class="mandatory">{tr:to} :</label>
                         
                         <?php if(Auth::isGuest() && AuthGuest::getGuest()->getOption(GuestOptions::CAN_ONLY_SEND_TO_ME)) { ?>
                         <?php echo AuthGuest::getGuest()->user_email ?>
@@ -118,7 +123,10 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
                             </div>
                             <div class="fieldcontainer" id="encryption_password_container">  
                                 <label for="encryption_password" style="cursor: pointer;">{tr:file_encryption_password} : </label>
-                                <input id="encryption_password" name="encryption_password" type="password"/>
+                                <input id="encryption_password" name="encryption_password" type="password" autocomplete="off"/>
+                            </div>
+                            <div class="fieldcontainer" id="encryption_password_container_too_short_message">
+                                {tr:file_encryption_password_too_short}
                             </div>
                             <div class="fieldcontainer" id="encryption_password_container_generate">
                                 <a id='encryption_generate_password' href="#">{tr:file_encryption_generate_password}</a>
@@ -181,9 +189,9 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
                     
                     <div class="basic_options">
                         <div class="fieldcontainer">
-                            <label for="datepicker" id="datepicker_label" class="mandatory">{tr:expiry_date}:</label>
+                            <label for="expires" id="datepicker_label" class="mandatory">{tr:expiry_date}:</label>
                             
-                            <input name="expires" type="text" autocomplete="off" title="<?php echo Lang::tr('dp_date_format_hint')->r(array('max' => Config::get('max_transfer_days_valid'))) ?>" value="<?php echo Utilities::formatDate(Transfer::getDefaultExpire()) ?>"/>
+                            <input id="expires" name="expires" type="text" autocomplete="off" title="<?php echo Lang::tr('dp_date_format_hint')->r(array('max' => Config::get('max_transfer_days_valid'))) ?>" value="<?php echo Utilities::formatDate(Transfer::getDefaultExpire()) ?>"/>
                         </div>
                         
                         <?php
@@ -228,7 +236,7 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
             </tr>
         </table>
         
-        <?php if (Config::get('AuP')) { ?>
+        <?php if (Config::get('aup_enabled')) { ?>
         <div class="aup fieldcontainer box">
             <label for="aup" title="{tr:showhide}">
                 {tr:accepttoc} [<span>{tr:showhide}</span>]
@@ -262,6 +270,18 @@ foreach(Transfer::allOptions() as $name => $dfn)  {
             </a>
         </div>
     </form>
+
+    <?php if (Config::get('upload_graph_bulk_display')) { ?>
+        <div id="graph" class="uploadbulkgraph"><div id="graphDiv" style="width:400px; height:200px; margin:0 auto"><canvas id="speedChart"></canvas></div></div>
+        <div id="host"><?php echo substr(gethostname(),0,strpos(gethostname(),'.')); ?></div>
+        <div id="terrasenderInUse"></div>
+
+        <script type="text/javascript" src="{path:lib/chartjs/Chart.bundle.min.js}"></script>
+        <script type="text/javascript" src="{path:js/graph.js}"></script>
+    <?php } ?>
     
+    <?php if (!Config::get('disable_directory_upload')) { ?>
+       <script type="text/javascript" src="{path:js/dragdrop-dirtree.js}"></script>
+    <?php } ?>
     <script type="text/javascript" src="{path:js/upload_page.js}"></script>
 </div>

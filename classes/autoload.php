@@ -54,17 +54,26 @@ class Autoloader {
         
         'Storage' => 'storage/',
         'Storage*' => 'storage/',
-        
+
+        // WARNING
+        // WARNING, the migration script uses things in data in a special way
+        // WARNING
         'DBObject' => 'data/',
+        'CollectionType' => 'data/',
+        'FileCollection' => 'data/',
+        'Collection' => 'data/',
         'Transfer' => 'data/',
         'File' => 'data/',
+        'ShredFile' => 'data/',
         'Recipient' => 'data/',
         'Guest' => 'data/',
         'User' => 'data/',
         'TrackingEvent' => 'data/',
         'TranslatableEmail' => 'data/',
         '*Log' => 'data/',
-        
+
+        'DBLayer' => 'utils/',
+
         'Auth*' => 'auth/',
         
         'RestEndpoint' => 'rest/',
@@ -75,6 +84,8 @@ class Autoloader {
         
 
         'TestDatabase*' => 'test/database/',
+
+        'PHPZipStreamer*' => '/PHPZipStreamer/src/',
 
         // Must be last
         '*' => 'utils/' 
@@ -100,6 +111,7 @@ class Autoloader {
                 $file .= '.class.php';
                 
                 if(!file_exists($file)) {
+
                     Logger::debug('Looking for class '.$class.', expecting it at '.$file.' but nothing found, may (or may not) be a problem ...');
                     return;
                 }

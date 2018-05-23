@@ -50,7 +50,7 @@ class RestEndpointFile extends RestEndpoint {
             'id' => $file->id,
             'transfer_id' => $file->transfer_id,
             'uid' => $file->uid,
-            'name' => $file->name,
+            'name' => $file->path,
             'size' => $file->size,
             'sha1' => $file->sha1
         );
@@ -78,7 +78,10 @@ class RestEndpointFile extends RestEndpoint {
         
         if(!$_GET['key']) // No key, need token
             return true;
-        
+
+        if(($method == 'put') && preg_match('`^[0-9]+$`', $path)) // No need if key and signal upload complete
+            return false;
+
         if(($method == 'post') && preg_match('`^[0-9]+/whole$`', $path)) // No need if key and whole file upload
             return false;
         
@@ -137,7 +140,7 @@ class RestEndpointFile extends RestEndpoint {
         // Check parameters
         if(!$id) throw new RestMissingParameterException('file_id');
         if(!is_numeric($id)) throw new RestBadParameterException('file_id');
-        if(!in_array($mode, array('whole'))) throw new RestBadParameterException('mode');
+        if( 'whole' != $mode ) throw new RestBadParameterException('mode');
         
         // Evaluate security type depending on config and auth
         $security = Config::get('chunk_upload_security');
@@ -261,7 +264,8 @@ class RestEndpointFile extends RestEndpoint {
         
         if($mode == 'chunk') {
             // Need to put a chunk of data
-            
+
+
             // File's Transfer must be uploading or just started, fail otherwise
             if(
                 $file->transfer->status != TransferStatuses::STARTED &&
@@ -287,32 +291,32 @@ class RestEndpointFile extends RestEndpoint {
                 }
                 // The initialization vector
                 $ivLength = 16;
-                $crypted_length = strlen($data);
                 // Content length
                 $data_length = ($chunkLength - $paddedLength - $ivLength);
             } else {
                 $data_length = strlen($data);
-                $crypted_length = 0;
             }
             
-            // keep track of each encrypted chunk so we know the actual final size;
-            $file->encrypted_size = $file->encrypted_size + $crypted_length;
-            $file->save();
-
             // Check that the client sent file size the same as the loaded file if given
             if(!is_null($client['X-Filesender-File-Size']))
                 if($file->size != $client['X-Filesender-File-Size'])
-                    throw new RestSanityCheckFailedException('file_size', $file->size, $client['X-Filesender-File-Size']);
+                    throw new RestSanityCheckFailedException('file_size', $file->size,
+                                                             $client['X-Filesender-File-Size'],
+                                                             $file, $client );
             
             // Check that the offset from check data and the one in the url are the same if given
             if(!is_null($client['X-Filesender-Chunk-Offset']))
                 if($offset != $client['X-Filesender-Chunk-Offset'])
-                    throw new RestSanityCheckFailedException('chunk_offset', $offset, $client['X-Filesender-Chunk-Offset']);
+                    throw new RestSanityCheckFailedException('chunk_offset', $offset,
+                                                             $client['X-Filesender-Chunk-Offset'],
+                                                             $file, $client );
             
             // Check that the sent data size is the one givent by the client
             if(!is_null($client['X-Filesender-Chunk-Size']))
                 if($data_length != $client['X-Filesender-Chunk-Size'])
-                    throw new RestSanityCheckFailedException('chunk_size', $data_length, $client['X-Filesender-Chunk-Size']);
+                    throw new RestSanityCheckFailedException('chunk_size', $data_length,
+                                                             $client['X-Filesender-Chunk-Size'],
+                                                             $file, $client );
 
             // Check that data length does not exceed upload_chunk_size (can be smaller at the end of the file)
             $upload_chunk_size = Config::get('upload_chunk_size');
@@ -320,7 +324,9 @@ class RestEndpointFile extends RestEndpoint {
 
             if ($data_length > $upload_chunk_size) {
                 if (( $file->transfer->options['encryption'] && $data_length > $upload_crypted_chunk_size )) {
-                    throw new RestSanityCheckFailedException('chunk_size', $data_length, 'max ' . Config::get('upload_chunk_size'));
+                    throw new RestSanityCheckFailedException('chunk_size', $data_length,
+                                                             'max ' . Config::get('upload_chunk_size'),
+                                                             $file, $client );
                 }
             }
 
@@ -334,7 +340,7 @@ class RestEndpointFile extends RestEndpoint {
                 $offset = $offset / Config::get('upload_chunk_size') * Config::get('upload_crypted_chunk_size');
             }
 
-            $write_info = $file->writeChunk($data, $offset, $crypted_length);
+            $write_info = $file->writeChunk($data, $offset);
             $file->transfer->isUploading();
             
             return $write_info;

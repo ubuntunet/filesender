@@ -28,7 +28,7 @@
     
     <?php foreach($report->transfer->files as $file) { ?>
         <div class="file" data-id="<?php echo $file->id ?>">
-            <?php echo Utilities::sanitizeOutput($file->name) ?> (<?php echo Utilities::formatBytes($file->size) ?>) : <?php echo count($file->downloads) ?> {tr:downloads}
+            <?php echo Utilities::sanitizeOutput($file->path) ?> (<?php echo Utilities::formatBytes($file->size) ?>) : <?php echo count($file->downloads) ?> {tr:downloads}
         </div>
     <?php } ?>
 </div>
@@ -74,7 +74,9 @@ foreach($report->logs as $entry) {
     
     echo '<td>'.$action.'</td>';
     
-    echo '<td>'.$entry->ip.'</td>';
+    if( Config::get('reports_show_ip_addr')) {
+        echo '<td>'.$entry->ip.'</td>';
+    }
     
     echo '</tr>';
 }

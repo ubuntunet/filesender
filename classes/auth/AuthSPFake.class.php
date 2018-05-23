@@ -84,9 +84,13 @@ class AuthSPFake {
             }
             
             // Check attributes
-            if(!$attributes['uid']) throw new AuthSPMissingAttributeException('uid');
+            if(!$attributes['uid'])
+                throw new AuthSPMissingAttributeException(
+                    'uid',$attributes,'uid','uid');
             
-            if(!$attributes['email']) throw new AuthSPMissingAttributeException('email');
+            if(!$attributes['email'])
+                throw new AuthSPMissingAttributeException(
+                     'email',$attributes,'email','email');
             
             if(!is_array($attributes['email'])) $attributes['email'] = array($attributes['email']);
             
@@ -96,7 +100,7 @@ class AuthSPFake {
             
             if(!$attributes['name']) $attributes['name'] = substr($attributes['email'], 0, strpos($attributes['email'], '@'));
             
-            // Build additionnal attributes
+            // Build additional attributes
             $additional_attributes = Config::get('auth_sp_additional_attributes');
             if($additional_attributes) {
                 $additional_attributes_values = (array)Config::get('auth_sp_fake_additional_attributes_values');

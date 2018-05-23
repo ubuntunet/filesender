@@ -35,21 +35,31 @@ filesender.ui.files = {
     invalidFiles: [],
     
     // File selection (browse / drop) handler
-    add: function(files, source_node) {
+    addList: function(files, source_node) {
         var node = null;
         for(var i=0; i<files.length; i++) {
-            var info = files[i].name + ' : ' + filesender.ui.formatBytes(files[i].size);
-            
+            var latest_node = filesender.ui.files.addFile(files[i].name, files[i], source_node);
+            if (latest_node) {
+                node = latest_node;
+            }
+        }
+        return node;
+    },
+    
+    addFile: function(filepath, fileblob, source_node) {
+        var filesize = fileblob.size;
+        var node = null;
+            var info = filepath + ' : ' + filesender.ui.formatBytes(filesize);
             node = $('<div class="file" />').attr({
-                'data-name': files[i].name,
-                'data-size': files[i].size
+                'data-name': filepath,
+                'data-size': filesize
             }).appendTo(filesender.ui.nodes.files.list);
             
             $('<span class="info" />').text(info).attr({title: info}).appendTo(node);
             
             if(filesender.ui.nodes.required_files) {
                 // Upload restart mode
-                var req = filesender.ui.nodes.required_files.find('.file[data-name="' + files[i].name + '"][data-size="' + files[i].size + '"]');
+                var req = filesender.ui.nodes.required_files.find('.file[data-name="' + filepath + '"][data-size="' + filesize + '"]');
                 
                 if(!req.length) {
                     filesender.ui.alert('error', lang.tr('unexpected_file'));
@@ -60,7 +70,7 @@ filesender.ui.files = {
                 var file = req.data('file');
                 var added_cid = req.attr('data-cid');
                 file.cid = added_cid;
-                file.blob = files[i];
+                file.blob = fileblob;
                 
                 filesender.ui.transfer.files.push(file);
                 
@@ -101,7 +111,7 @@ filesender.ui.files = {
                     filesender.ui.evalUploadEnabled();
                 }).appendTo(node);
                 
-                var added_cid = filesender.ui.transfer.addFile(files[i], function(error) {
+                var added_cid = filesender.ui.transfer.addFile(filepath, fileblob, function(error) {
                     var tt = 1;
                     if(error.details && error.details.filename) filesender.ui.files.invalidFiles.push(error.details.filename);
                     node.addClass('invalid');
@@ -112,12 +122,12 @@ filesender.ui.files = {
                 
                 filesender.ui.nodes.files.clear.button('enable');
                 
-                if(added_cid === false) continue;
+                if(added_cid === false) return node;
             }
                 
             filesender.ui.evalUploadEnabled();
             node.attr('data-cid', added_cid);
-            
+
             var bar = $('<div class="progressbar" />').appendTo(node);
             $('<div class="progress-label" />').appendTo(bar);
             bar.progressbar({
@@ -135,10 +145,38 @@ filesender.ui.files = {
             });
             
             $('<span class="fa fa-lg fa-check done_icon" />').appendTo(node);
+
+            if (filesender.config.upload_display_per_file_stats) {
+                var p = $('<span class="workercrust"/>');
+                p.appendTo(node);
+
+                var makeCrust = function( p, idx ) {
+                    var crust_meter = $('<div class="crust crust' + idx + '">'
+                                        + '  <a class="crust_meter" href="#">'
+                                        + '  <div class="label crustage   uploadthread">   </div></a>'
+                                        + '  <a class="crust_meter_bytes" href="#">'
+                                        + '  <div class="label crustbytes uploadthread">   </div></a>'
+                                        + '</div>');
+                    crust_meter.appendTo(p);
+                    crust_meter.button({disabled: true});
+
+                    return crust_meter;
+                };
+
+                if( filesender.config.terasender_enabled ) {
+                    for( idx=0; idx < filesender.config.terasender_worker_count; idx++ ) {
+                        var crust_meter = makeCrust( p, idx );
+                    }
+                }
+                else {
+                    var crust_meter = makeCrust( p, 0 );
+                }
+
+            }
             
             if(filesender.ui.nodes.required_files) {
                 if(file) {
-                    bar.show().progressbar('value', Math.floor(1000 * file.uploaded / file.size)); 
+                    bar.show().progressbar('value', Math.floor(1000 * file.uploaded / file.size));
                 }
                 
             } else {
@@ -151,11 +189,129 @@ filesender.ui.files = {
             }
             
             node.attr('index', filesender.ui.transfer.files.length - 1);
-        }
         
         filesender.ui.nodes.files.list.scrollTop(filesender.ui.nodes.files.list.prop('scrollHeight'));
         
         return node;
+    },
+    
+    update_crust_meter_for_worker: function(file,idx,v,b) {
+
+        var crust_indicator = filesender.ui.nodes.files.list.find('[data-cid="' + file.cid + '"] .crust' + idx);
+        if( crust_indicator ) {
+            var vd = v / 1000;
+            if( v == -1 ) {
+                crust_indicator.find('.crustage').text( "" );
+            } else {
+                crust_indicator.find('.crustage').text( vd.toFixed(2) );
+            }
+
+            crust_indicator.find('.crustbytes').text( '' );
+            if( b ) {
+                crust_indicator.removeClass('good');
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('slow');
+                crust_indicator.addClass('bad');
+            } else {
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('slow');
+                crust_indicator.removeClass('bad');
+                crust_indicator.addClass('good');
+            }
+            
+            // filesender.config.upload_chunk_size [ def = 5 * 1024 * 1024 ]
+/*            
+            var baseline_upload_bps = 20 * 1024 * 1024;
+            var cutoff = filesender.config.upload_chunk_size / baseline_upload_bps * 1000;
+            if( v < cutoff ) {
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('slow');
+                crust_indicator.removeClass('bad');
+                crust_indicator.addClass('good');
+            } else if( v < (cutoff*1.1) ) {
+                crust_indicator.removeClass('good');
+                crust_indicator.removeClass('slow');
+                crust_indicator.removeClass('bad');
+                crust_indicator.addClass('middle');
+            } else if( v < (cutoff*1.2) ) {
+                crust_indicator.removeClass('good');
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('bad');
+                crust_indicator.addClass('slow');
+            } else {
+                crust_indicator.removeClass('good');
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('slow');
+                crust_indicator.addClass('bad');
+            }
+*/
+        }
+    },
+
+    clear_crust_meter_all: function() {
+        for (var i = 0; i < filesender.ui.transfer.files.length; i++) {
+            file = filesender.ui.transfer.files[i];
+            filesender.ui.files.clear_crust_meter( file );
+        }
+    },
+    
+    clear_crust_meter: function( file ) {
+        var imax = 1;
+        if( filesender.config.terasender_enabled ) {
+            imax = filesender.config.terasender_worker_count;
+        }
+
+        for( var i = 0; i < imax; i++ ) {
+            var crust_indicator = filesender.ui.nodes.files.list.find('[data-cid="' + file.cid + '"] .crust' + i);
+            if( crust_indicator ) {
+                crust_indicator.find('.crustage').text( '' );
+                crust_indicator.find('.crustbytes').text( '' );
+                crust_indicator.removeClass('middle');
+                crust_indicator.removeClass('slow');
+                crust_indicator.removeClass('bad');
+                crust_indicator.addClass('good');
+            }
+        }
+    },
+    
+    update_crust_meter: function( file ) {
+        if (!filesender.config.upload_display_per_file_stats) {
+            return;
+        }
+        
+        if (filesender.ui.transfer.status != 'running') {
+            this.clear_crust_meter( file );
+            return;
+        }
+
+        var durations = filesender.ui.transfer.getMostRecentChunkDurations( file );
+        var bytes     = filesender.ui.transfer.getMostRecentChunkFineBytes( file );
+        var offending = filesender.ui.transfer.getIsWorkerOffending( file );
+        if( durations.length != bytes.length || bytes.length != offending.length ) {
+            filesender.ui.log('WARNING worker tracking stats are wrong' );
+            return;
+        }
+        if( durations.length < 1 ) {
+            filesender.ui.log('WARNING worker tracking stats are missing' );
+            return;
+        }
+        var imax = durations.length;
+        if( filesender.config.terasender_enabled && imax != filesender.config.terasender_worker_count ) {
+            filesender.ui.log('WARNING ts worker tracking stats are too few' );
+            return;
+        }
+        
+        for( i=0; i < imax; i++ ) {
+            v = -1;
+            if( i < durations.length ) {
+                v = durations[i];
+            }
+            b = false;
+            if( i < offending.length ) {
+                b = offending[i];
+            }
+            filesender.ui.files.update_crust_meter_for_worker( file, i, v, b );
+        }
     },
     
     // Update progress bar, run in transfer context
@@ -202,6 +358,33 @@ filesender.ui.files = {
         filesender.ui.nodes.stats.size.hide().find('.value').text('');
         
         filesender.ui.evalUploadEnabled();
+    },
+
+    checkEncryptionPassword: function(input) {
+        input = $(input);
+
+        var invalid = false;
+        var pass = input.val();
+        var minLength = filesender.config.encryption_min_password_length;
+        if( minLength > 0 ) {
+            if( !pass || pass.length < minLength ) {
+                invalid = true;
+            }
+        }
+        
+        var msg = $('#encryption_password_container_too_short_message');
+        
+        if(invalid) {
+            input.addClass('invalid');
+            if( msg.css('display')=='none') {
+                msg.slideToggle();
+            }
+        }else{
+            input.removeClass('invalid');
+            if( msg.css('display')!='none') {
+                msg.slideToggle();
+            }
+        }
     },
 };
 
@@ -397,6 +580,11 @@ filesender.ui.evalUploadEnabled = function() {
     
     if(filesender.ui.nodes.aup.length)
         if(!filesender.ui.nodes.aup.is(':checked')) ok = false;
+
+    var invalid_nodes = filesender.ui.nodes.files.list.find('.invalid');
+    if( invalid_nodes.length ) {
+        ok = false;
+    }
     
     if(filesender.ui.nodes.required_files) {
         if(ok) filesender.ui.nodes.required_files.hide();
@@ -409,6 +597,7 @@ filesender.ui.evalUploadEnabled = function() {
 };
 
 filesender.ui.startUpload = function() {
+    
     if(!filesender.ui.nodes.required_files) {
         this.transfer.expires = filesender.ui.nodes.expires.datepicker('getDate').getTime() / 1000;
         
@@ -435,8 +624,20 @@ filesender.ui.startUpload = function() {
     this.transfer.disable_terasender = filesender.ui.nodes.disable_terasender.is(':checked');
     
     this.transfer.onprogress = filesender.ui.files.progress;
+
+    if( filesender.config.upload_display_per_file_stats ) {
+        window.setInterval(function() {
+            for (var i = 0; i < filesender.ui.transfer.files.length; i++) {
+                file = filesender.ui.transfer.files[i];
+                filesender.ui.files.update_crust_meter( file );
+            }
+        }, 1000);
+    }
     
     this.transfer.oncomplete = function(time) {
+
+        filesender.ui.files.clear_crust_meter_all();
+        
         var redirect_url = filesender.ui.transfer.options.redirect_url_on_complete;
         if(redirect_url) {
             filesender.ui.redirect(redirect_url);
@@ -445,7 +646,7 @@ filesender.ui.startUpload = function() {
                 filesender.ui.redirect(redirect_url);
                 filesender.ui.alert('success', lang.tr('done_uploading_redirect').replace({url: redirect_url}));
             }, 5000);
-            
+                    
             return;
         }
         
@@ -456,6 +657,7 @@ filesender.ui.startUpload = function() {
                 filesender.ui.transfer.guest_token ? null : 'transfer_' + filesender.ui.transfer.id
             );
         };
+
         
         var p = filesender.ui.alert('success', lang.tr('done_uploading'), close);
         
@@ -611,6 +813,9 @@ $(function() {
         var i = $(this);
         filesender.ui.nodes.options[i.attr('name')] = i;
     });
+
+    
+
     
     // Bind file list clear button
     filesender.ui.nodes.files.clear.on('click', function() {
@@ -639,9 +844,17 @@ $(function() {
         
         e.preventDefault();
         e.stopPropagation();
+
+        addtree_success = false;
         
-        filesender.ui.files.add(e.originalEvent.dataTransfer.files);
-    });
+        if (typeof filesender.dragdrop.addTree === "function") {
+          addtree_success = filesender.dragdrop.addTree(e.originalEvent.dataTransfer);
+        }
+
+        if (!addtree_success) {
+            filesender.ui.files.addList(e.originalEvent.dataTransfer.files);
+        }
+      });
     
     // Bind recipients events
     filesender.ui.nodes.recipients.input.on('keydown', function(e) {
@@ -658,6 +871,13 @@ $(function() {
         
         filesender.ui.recipients.addFromInput($(this));
     });
+
+
+    // Bind encryption password events
+    filesender.ui.nodes.encryption.password.on('keyup', function(e) {
+        filesender.ui.files.checkEncryptionPassword($(this));
+    });
+
     
     // Bind file list select button
     filesender.ui.nodes.files.input.on('change', function() {
@@ -669,7 +889,7 @@ $(function() {
 
         if(typeof this.files == 'undefined') return;
         
-        filesender.ui.files.add(this.files);
+        filesender.ui.files.addList(this.files);
         
         // Forget (cloned) selection for webkit
         this.value = null;
@@ -682,7 +902,7 @@ $(function() {
     // Handle "back" browser action
     if(filesender.supports.reader) {
         var files = filesender.ui.nodes.files.input[0].files;
-        if(files && files.length) filesender.ui.files.add(files);
+        if(files && files.length) filesender.ui.files.addList(files);
     }
 
     // validate message as it is typed
@@ -753,19 +973,57 @@ $(function() {
     filesender.ui.nodes.aup.on('change', function() {
         filesender.ui.evalUploadEnabled();
     });
-    
+
     // Bind encryption
     filesender.ui.nodes.encryption.toggle.on('change', function() {
         $('#encryption_password_container').slideToggle();
         $('#encryption_password_container_generate').slideToggle();
         $('#encryption_password_show_container').slideToggle();
         $('#encryption_description_container').slideToggle();
+        filesender.ui.transfer.encryption = filesender.ui.nodes.encryption.toggle.is(':checked');
+        
+        if( filesender.ui.transfer.encryption ) {
+            filesender.ui.files.checkEncryptionPassword(filesender.ui.nodes.encryption.password );
+        } else {
+            var msg = $('#encryption_password_container_too_short_message');
+            msg.hide();
+        }
+        
+        for(var i=0; i<filesender.ui.transfer.files.length; i++) {
+            var file = filesender.ui.transfer.files[i];
+            
+            var node = filesender.ui.nodes.files.list.find('.file[data-name="' + file.name + '"][data-size="' + file.size + '"]');            
+            filesender.ui.transfer.checkFileAsStillValid(
+                file,
+                function(ok) {
+                    node.removeClass('invalid');
+                    node.find('.invalid').remove();
+                    node.find('.invalid_reason').remove();
+                },
+                function(error) {
+                    var tt = 1;
+                    if(error.details && error.details.filename) filesender.ui.files.invalidFiles.push(error.details.filename);
+                    node.addClass('invalid');
+                    node.addClass(error.message);
+                    $('<span class="invalid fa fa-exclamation-circle fa-lg" />').prependTo(node.find('.info'))
+                    $('<div class="invalid_reason" />').text(lang.tr(error.message)).appendTo(node);
+                });
+        }
+        filesender.ui.evalUploadEnabled();
+        
         return false;
     });
     filesender.ui.nodes.encryption.generate.on('click', function() {
-        filesender.ui.nodes.encryption.password.val(Math.random().toString(36).substr(2, 14));
+        var genp = function() { return Math.random().toString(36).substr(2, 14); }
+        var pass = genp();
+        for( var i=0; i < filesender.config.encryption_generated_password_length; i++ ) {
+            pass = pass + genp();
+        }
+        pass = pass.substr(0,filesender.config.encryption_generated_password_length);
+        filesender.ui.nodes.encryption.password.val(pass);
         filesender.ui.nodes.encryption.show_hide.prop('checked',true);
         filesender.ui.nodes.encryption.show_hide.trigger('change');
+        filesender.ui.files.checkEncryptionPassword(filesender.ui.nodes.encryption.password );
     });
     filesender.ui.nodes.encryption.show_hide.on('change', function() {
         if (filesender.ui.nodes.encryption.show_hide.is(':checked')) {
@@ -818,15 +1076,30 @@ $(function() {
             return false;
         }).button({disabled: true});
     }
+
+
     
     filesender.ui.nodes.buttons.stop.on('click', function() {
-        filesender.ui.confirm(lang.tr('confirm_stop_upload'), function() {
-            filesender.ui.transfer.stop(function() {
-                filesender.ui.goToPage('upload');
-            });
-        });
+        if(filesender.supports.reader) {
+            filesender.ui.transfer.pause();
+            filesender.ui.nodes.buttons.pause.addClass('not_displayed');
+            filesender.ui.nodes.buttons.resume.removeClass('not_displayed');
+            filesender.ui.nodes.stats.average_speed.find('.value').text(lang.tr('paused'));
+        }
+        filesender.ui.confirm(lang.tr('confirm_stop_upload'),
+                              function() { // ok
+                                  filesender.ui.transfer.stop(function() {
+                                      filesender.ui.goToPage('upload');
+                                  });
+                              },
+                              function() { // cancel
+                                  filesender.ui.transfer.resume();
+                                  filesender.ui.nodes.buttons.pause.removeClass('not_displayed');
+                                  filesender.ui.nodes.buttons.resume.addClass('not_displayed');
+                              });
         return false;
     }).button();
+    
     
     // MUST BE AFTER BUTTONS SETUP otherwise event propagation ends up
     // trying to change button state but button is still not initialized ...
@@ -866,7 +1139,7 @@ $(function() {
             
             // TODO check file size, reject if over filesender.config.max_legacy_file_size
             
-            var node = filesender.ui.files.add(this.files, file.get(0));
+            var node = filesender.ui.files.addList(this.files, file.get(0));
             if(!node) return;
             
             file.appendTo(node);
@@ -899,8 +1172,9 @@ $(function() {
         } else if(!auth || auth == 'guest') {
             id = null; // Cancel
         }
+
         
-        if(id) filesender.client.getTransfer(id, function() {
+        if(id) filesender.client.getTransfer(id, function(xdata) {
             // Transfer still exists on server, lets ask the user what to do with it
             
             var load = function() {
@@ -960,6 +1234,20 @@ $(function() {
             };
             
             var later = function() {};
+
+
+            // maybe we want to force filesender to forget the transfer
+            var force_forget = false;
+
+            if( filesender.config.upload_force_transfer_resume_forget_if_encrypted
+                && xdata.options.encryption )
+            {
+                force_forget = true;
+            }
+            
+            if( force_forget ) {
+                forget();
+            } else {
             
             var prompt = filesender.ui.popup(lang.tr('restart_failed_transfer'), {'load': load, 'forget': forget, 'later': later}, {onclose: later});
             $('<p />').text(lang.tr('failed_transfer_found')).appendTo(prompt);
@@ -973,6 +1261,7 @@ $(function() {
                 finfo += ', ' + (100 * failed.files[i].uploaded / failed.files[i].size).toFixed(0) + '% ' + lang.tr('done');
                 $('<li />').text(finfo).appendTo(fctn);
             }
+
             
             $('<div class="recipients" />').text(lang.tr('recipients') + ' : ' + failed.recipients.join(', ')).appendTo(tctn);
             
@@ -981,8 +1270,9 @@ $(function() {
             
             if(failed.message)
                 $('<div class="message" />').text(lang.tr('message') + ' : ' + failed.message).appendTo(tctn);
-            
+            }            
         }, function(error) {
+            console.log('getTransfer() msg: ' + error.message);
             if(error.message == 'transfer_not_found') {
                 // Transfer does not exist anymore on server side, remove from tracker
                 filesender.ui.transfer.removeFromRestartTracker(failed.id);

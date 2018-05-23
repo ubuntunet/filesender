@@ -2,10 +2,54 @@
     if(!isset($status)) $status = 'available';
     if(!isset($mode)) $mode = 'user';
     if(!isset($transfers) || !is_array($transfers)) $transfers = array();
+    if(!isset($limit)) $limit = 100000;
+    if(!isset($offset)) $offset = 0;
+    if(!isset($pagerprefix)) $pagerprefix = '';
     $show_guest = isset($show_guest) ? (bool)$show_guest : false;
     $extend = (bool)Config::get('allow_transfer_expiry_date_extension');
     $audit = (bool)Config::get('auditlog_lifetime') ? '1' : '';
+    $haveNext = 0;
+    $havePrev = 0;
+
+    if( count($transfers) > $limit ) {
+        $haveNext = 1;
+        $transfers = array_slice($transfers,0,$limit);
+    }
+    if( $offset > 0 ) {
+        $havePrev = 1;
+    }
+
+    $showPager = $havePrev || $haveNext;
+    
+    if( $havePrev || $haveNext ) {
+        echo '<table class="paginator" border="1"><tr>';
+        $base = '?s=' . $_GET['s'];
+        $cgioffset = $pagerprefix . 'offset';
+        $cgilimit  = $pagerprefix . 'limit';
+        $nextPage  = $offset+$limit;
+        $nextLink  = "$base&$cgioffset=$nextPage&$cgilimit=$limit";
+        
+        if( $havePrev ) {
+           $prevPage = max(0,$offset-$limit);
+           echo "<td class='pageprev0'><a href='$base&$cgioffset=0&$cgilimit=$limit'><span class='fa-stack fa-lg'><i class='fa fa-square fa-stack-2x'></i><i class='fa fa-angle-double-left fa-stack-1x fa-inverse'></i></span></a></td>";
+           echo "<td class='pageprev'><a href='$base&$cgioffset=$prevPage&$cgilimit=$limit'><span class='fa-stack fa-lg'><i class='fa fa-square fa-stack-2x'></i><i class='fa fa-angle-left fa-stack-1x fa-inverse'></i></span></a></td>";
+        } else {
+           echo "<td class='pageprev0'>&nbsp;&nbsp;</td><td class='pageprev'>&nbsp;</td>";
+        }
+
+        if( $haveNext ) {
+           echo "<td class='pagenext'><a href='$nextLink'><span class='fa-stack fa-lg'><i class='fa fa-square fa-stack-2x'></i><i class='fa fa-angle-right fa-stack-1x fa-inverse'></i></span></a></td>";
+        } else {
+           echo "<td class='pagenext'>&nbsp;</td>";
+        }
+        echo "<td class='pageheader'>$header</td>";
+        echo '</tr></tbody></table>';
+    } else {
+        if(isSet($header) && strlen($header))
+            echo "<h2>$header</h2>";
+    }
 ?>
+
 <table class="transfers list" data-status="<?php echo $status ?>" data-mode="<?php echo $mode ?>" data-audit="<?php echo $audit ?>">
     <thead>
         <tr>
@@ -99,9 +143,9 @@
                 <?php
                 $items = array();
                 foreach(array_slice($transfer->files, 0, 3) as $file) {
-                    $name = $file->name;
+                    $name = $file->path;
                     if(strlen($name) > 28) $name = substr($name, 0, 25).'...';
-                    $items[] = '<span title="'.Template::sanitizeOutput($file->name).'">'.Template::sanitizeOutput($name).'</span>';
+                    $items[] = '<span title="'.Template::sanitizeOutput($file->path).'">'.Template::sanitizeOutput($name).'</span>';
                 }
                 
                 if(count($transfer->files) > 3)
@@ -114,7 +158,7 @@
             <td class="downloads">
                 <?php $dc = count($transfer->downloads); echo $dc; if($dc) { ?> (<span class="clickable expand">{tr:see_all}</span>)<?php } ?>
             </td>
-            
+           
             <td class="expires" data-rel="expires">
                 <?php echo Utilities::formatDate($transfer->expires) ?>
             </td>
@@ -230,7 +274,7 @@
                     
                     <?php foreach($transfer->files as $file) { ?>
                         <div class="file" data-id="<?php echo $file->id ?>">
-                            <?php echo Template::sanitizeOutput($file->name) ?> (<?php echo Utilities::formatBytes($file->size) ?>) : <?php echo count($file->downloads) ?> {tr:downloads}
+                            <?php echo Template::sanitizeOutput($file->path) ?> (<?php echo Utilities::formatBytes($file->size) ?>) : <?php echo count($file->downloads) ?> {tr:downloads}
                             
                             <?php if(!$transfer->is_expired) { ?>
                                
@@ -238,7 +282,7 @@
                                 <span class="fa fa-lg fa-download transfer-file transfer-download" title="{tr:download}" data-id="<?php echo $file->id ?>" 
                                         data-encrypted="<?php echo isset($transfer->options['encryption'])?$transfer->options['encryption']:'false'; ?>" 
                                         data-mime="<?php echo Template::sanitizeOutput($file->mime_type); ?>" 
-                                        data-name="<?php echo Template::sanitizeOutput($file->name); ?>"></span>
+                                        data-name="<?php echo Template::sanitizeOutput($file->path); ?>"></span>
                                         
                                 <?php } else {?>
                             <a class="fa fa-lg fa-download" title="{tr:download}" href="download.php?files_ids=<?php echo $file->id ?>"></a>
@@ -265,7 +309,22 @@
             <td colspan="7">{tr:no_transfers}</td>
         </tr>
         <?php } ?>
+
+        <tr class="pager_bottom_nav">
+            <td colspan="8" class="nextColumn">
+                <?php if($haveNext) { ?>
+                    <?php echo "<a href='$nextLink'>"; ?>
+                    {tr:pager_more}
+                    </a>
+                <?php } else { ?>
+                    {tr:pager_has_no_more}
+                <?php } ?>
+            </td>
+        </tr>
+
     </tbody>
 </table>
+
+
 
 <script type="text/javascript" src="{path:js/transfers_table.js}"></script>

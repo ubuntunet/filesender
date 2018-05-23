@@ -132,7 +132,6 @@ class Utilities {
         return preg_match('/' .  Config::get('valid_filename_regex') . '/u', $filename);
     }
 
-
     /*
      * Generate (pseudo) (super-)random hex string
      * 
@@ -313,6 +312,8 @@ class Utilities {
         // Default
         if(!$precision || !is_numeric($precision))
             $precision = 2;
+        // allow sloppy $bytes
+        $bytes = floor($bytes);
         
         // Variants
         $unit = Lang::tr('size_unit')->out();
@@ -375,7 +376,7 @@ class Utilities {
             || is_null($input)
             || is_object($input) // How can that be ?
         )
-            return $input;
+        return $input;
         
         if(is_string($input)) {
             // Convert to UTF-8
@@ -401,6 +402,47 @@ class Utilities {
      */
     public static function sanitizeOutput($output) {
         return htmlentities($output, ENT_QUOTES, 'UTF-8');
+    }
+
+    public static function startsWith($haystack, $needle)
+    {
+        $length = strlen($needle);
+        return (substr($haystack, 0, $length) === $needle);
+    }
+
+    /**
+     * This is a wrapper around the PHP http_build_query with some
+     * smarts. $path is optional and if not given will be the site itself.
+     * If path is given and is ^http then it is taken as the site url prefix.
+     * On the other hand if path is relative then it is converted to absolute
+     * by this call.
+     *
+     * CGI parameters are given in $q which can be an array like;
+     * array( 'foo' => 'bar', 'baz' => 7 )
+     *
+     * @param array q the CGI parameters
+     * @param string path either nothing (default), a relative prefox, or absolute url
+     *
+     * @return string full URL using path and query params using the user's specified
+     *                path separator (; can be useful here).
+     */
+    public static function http_build_query( $q, $path = null ) {
+        if( $path == null ) {
+            $path = Config::get('site_url') . '?';
+        } else {
+            if( !Utilities::startsWith($path, 'http' )) {
+                $path = Config::get('site_url') . $path;
+            }
+        }
+        $ret = $path;
+        $sep = ini_get('arg_separator.output');
+        if( phpversion() < 5.4 ) {
+            // CIFIXME remove this branch when CI php is upgraded.
+            $ret .= http_build_query( $q, '', $sep );
+        } else {
+            $ret .= http_build_query( $q, '', $sep, PHP_QUERY_RFC3986 );
+        }        
+        return $ret;
     }
     
     /**
@@ -485,5 +527,97 @@ class Utilities {
         
         // Previous value matches
         return $token_to_check === self::$security_token['old']['value'];
+    }
+
+
+    /**
+     * Read the config $configkey and if it is set then regex
+     * match it to see if needle matches and return the result. 
+     * This function handles empty configkey values and may cache results.
+     *
+     * So if you have a possible config key
+     *    mykey_regex => 'foo.*',
+     *
+     * you can see if you match in code with
+     * if( Utilities::configMatch( 'mykey_regex', 'bar' )) {
+     *    ...
+     * }
+     */
+    public static function configMatch( $configkey, $needle ) {
+        $cfg = Config::get( $configkey );
+        if( !strlen($cfg) )
+            return false;
+        if( preg_match('/' . $cfg . '/', $needle ))     
+            return true;  
+        return false;
+    }
+
+    /**
+     * Read a value from an array validating the result. 
+     * If the array doesn't have the key or validation fails
+     * then return a default value.
+     *
+     * filtering is optional but highly recommended. If you want an int then
+     * ask for one to be validated as such
+     * 
+     * filter is from http://php.net/manual/en/filter.filters.validate.php
+     */
+    public static function arrayKeyOrDefault( $array, $key, $def, $filter = FILTER_DEFAULT ) {
+        $r = $def;
+        if( array_key_exists($key,$array)) {
+            $t = $array[$key];
+            if(isset($t))
+                $r = $t;
+        }
+
+        $options = array(
+            'options' => array( 'default' => $def ),
+        );
+        $r = filter_var( $r, $filter, $options);
+        return $r;
+    }
+
+    /**
+     * true if $v is array( array( ... ) )
+     */
+    public static function is_array_of_array( $v ) {
+        if( !is_array($v)) {
+            return false;
+        }
+        $sl = array_slice($v,0,1);
+        if( is_array(array_shift($sl))) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * This does some sniffing around first to see if the file exists
+     * and can be read before trying to include it. If the include
+     * fails then the haltmsg is logged and the function does not return.
+     *
+     * Note that at the moment no syntax checks are done on the included
+     * file. If the file has errors in it then script execution will halt.
+     *
+     * @param string path the file to include_once()
+     * @param haltmsg the message to halt with. This may be decorated with additional
+     * info such as "file not found" if that specific error has occurred.
+     */
+    public static function include_once_or_halt( $path, $haltmsg ) {
+
+        if( !file_exists($path)) {
+            Logger::haltWithErorr( 'File not found at expected path ' . $path 
+                                 . ' ' . $haltmsg);
+        }
+        if( !is_readable($path)) { 
+            Logger::haltWithErorr('Can not read file at path ' . $path
+                                . ' ' . $haltmsg);
+        }
+
+        // actually bring in the autoload file
+        if ((include_once($path)) == FALSE) {
+            Logger::haltWithErorr('Failed to include file from path ' . $path
+                                . ' ' . $haltmsg);
+        }
     }
 }
